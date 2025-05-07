@@ -509,51 +509,72 @@
         }
 
         // Función para procesar la factura
-        function procesarFactura() {
-            const codigoGeneracion = generarCodigoUnico();
-            const numeroControl = generarNumeroControl();
-            const dteJson = construirDteJson(codigoGeneracion, numeroControl);
-            
-            // Construir el request unificado con el DteJson como string
-            const requestUnificado = {
-                Usuario: configEmisor.nit,
-                Password: configEmisor.claveApi,
-                Ambiente: "00",
-                DteJson: JSON.stringify(dteJson),  // Convertir a String
-                Nit: configEmisor.nit,
-                PasswordPrivado: configEmisor.clave,
-                TipoDte: "01",
-                CodigoGeneracion: codigoGeneracion,
-                NumControl: numeroControl,
-                VersionDte: 1
-            };
+        async function procesarFactura() {
+            try {
+                const codigoGeneracion = generarCodigoUnico();
+                const numeroControl = generarNumeroControl();
+                const dteJson = construirDteJson(codigoGeneracion, numeroControl);
+                
+                // Construir el request unificado con el DteJson como string
+                const requestUnificado = {
+                    Usuario: configEmisor.nit,
+                    Password: configEmisor.claveApi,
+                    Ambiente: "00",
+                    DteJson: JSON.stringify(dteJson),  // Convertir a String
+                    Nit: configEmisor.nit,
+                    PasswordPrivado: configEmisor.clave,
+                    TipoDte: "01",
+                    CodigoGeneracion: codigoGeneracion,
+                    NumControl: numeroControl,
+                    VersionDte: 1
+                };
 
-            fetch('https://localhost:7122/api/procesar-dte', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(requestUnificado)
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`Error al procesar DTE: ${response.statusText}`);
+                // Enviar a la API
+                const response = await fetch('https://localhost:7122/api/procesar-dte', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestUnificado)
+                });
+                
+                const result = await response.json();
+                
+                // Enviar correo después de procesar la factura
+                const correoDestinatario = dteJson.receptor.correo;
+                
+                // Crear FormData para enviar los archivos
+                const formData = new FormData();
+                formData.append('pdfFactura', new Blob([result.pdf], { type: 'application/pdf' }));
+                formData.append('jsonFactura', JSON.stringify(dteJson));
+                formData.append('correoDestinatario', correoDestinatario);
+                
+                // Enviar correo
+                const correoResponse = await fetch('/factura/enviarCorreo', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!correoResponse.ok) {
+                    throw new Error('Error al enviar el correo');
                 }
-                return response.json();
-            })
-            .then(data => {
-                const selloRecepcion = data.selloRecibido || null;
-                if (selloRecepcion) {
-                    alert('Factura procesada correctamente. Sello de recepción: ' + selloRecepcion);
-                    window.location.reload();
-                } else {
-                    alert('Factura procesada pero no se recibió sello de recepción');
-                }
-            })
-            .catch(error => {
+                
+                mostrarResultado(result);
+            } catch (error) {
                 console.error('Error:', error);
                 alert('Error al procesar la factura: ' + error.message);
-            });
+            }
+        }
+
+        // Función para mostrar el resultado
+        function mostrarResultado(result) {
+            const selloRecepcion = result.selloRecibido || null;
+            if (selloRecepcion) {
+                alert('Factura procesada correctamente. Sello de recepción: ' + selloRecepcion);
+                window.location.reload();
+            } else {
+                alert('Factura procesada pero no se recibió sello de recepción');
+            }
         }
     </script>
 </body>
