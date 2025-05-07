@@ -223,11 +223,8 @@
         </div>
 
         <div class="text-end mb-3">
-            <button class="btn btn-primary me-2" onclick="procesarFacturaJava()">
-                <i class="fas fa-code"></i> Procesar con Java
-            </button>
             <button class="btn btn-success" onclick="procesarFactura()">
-                <i class="fas fa-file-invoice"></i> Procesar con JavaScript
+                <i class="fas fa-file-invoice"></i> Procesar Factura
             </button>
         </div>
     </div>
@@ -337,6 +334,54 @@
             document.getElementById('productoPrecio').value = '';
         }
 
+        // Función para convertir número a letras
+        function convertirNumeroALetras(numero) {
+            const unidades = ['', 'UNO', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE'];
+            const decenas = ['', 'DIEZ', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA'];
+            const especiales = ['DIEZ', 'ONCE', 'DOCE', 'TRECE', 'CATORCE', 'QUINCE', 'DIECISEIS', 'DIECISIETE', 'DIECIOCHO', 'DIECINUEVE'];
+            const centenas = ['', 'CIENTO', 'DOSCIENTOS', 'TRESCIENTOS', 'CUATROCIENTOS', 'QUINIENTOS', 'SEISCIENTOS', 'SETECIENTOS', 'OCHOCIENTOS', 'NOVECIENTOS'];
+
+            if (numero === 0) return 'CERO';
+
+            let entero = Math.floor(numero);
+            let decimal = Math.round((numero - entero) * 100);
+
+            let resultado = '';
+
+            if (entero > 0) {
+                if (entero === 100) {
+                    resultado = 'CIEN';
+                } else if (entero < 100) {
+                    if (entero < 10) {
+                        resultado = unidades[entero];
+                    } else if (entero < 20) {
+                        resultado = especiales[entero - 10];
+                    } else {
+                        let unidad = entero % 10;
+                        let decena = Math.floor(entero / 10);
+                        resultado = decenas[decena];
+                        if (unidad > 0) {
+                            resultado += ' Y ' + unidades[unidad];
+                        }
+                    }
+                } else {
+                    let centena = Math.floor(entero / 100);
+                    let resto = entero % 100;
+                    resultado = centenas[centena];
+                    if (resto > 0) {
+                        resultado += ' ' + convertirNumeroALetras(resto);
+                    }
+                }
+            }
+
+            resultado += ' DOLARES';
+            if (decimal > 0) {
+                resultado += ' CON ' + decimal.toString().padStart(2, '0') + '/100';
+            }
+
+            return resultado;
+        }
+
         // Función para construir el DTE JSON
         function construirDteJson(codigoGeneracion, numeroControl) {
             // Función auxiliar para redondear a 2 decimales
@@ -418,7 +463,7 @@
                     tributos: null,
                     psv: redondear(p.subtotal),
                     noGravado: 0,
-                    ivaItem: redondear(p.iva)
+                    ivaItem: redondear(p.subtotal - (p.subtotal / 1.13))
                 })),
                 resumen: {
                     totalNoSuj: 0,
@@ -434,16 +479,16 @@
                     subTotal: redondear(subtotal),
                     ivaRete1: 0,
                     reteRenta: 0,
-                    montoTotalOperacion: redondear(total),
+                    montoTotalOperacion: redondear(subtotal),
                     totalNoGravado: 0,
-                    totalPagar: redondear(total),
-                    totalLetras: "nueve con 00/100",
-                    totalIva: redondear(iva),
+                    totalPagar: redondear(subtotal),
+                    totalLetras: convertirNumeroALetras(total),
+                    totalIva: redondear(subtotal - (subtotal / 1.13)),
                     saldoFavor: 0,
                     condicionOperacion: 1,
                     pagos: [{
                         codigo: "01",
-                        montoPago: redondear(total),
+                        montoPago: redondear(subtotal),
                         referencia: "0000",
                         periodo: null,
                         plazo: null
@@ -463,7 +508,7 @@
             };
         }
 
-        // Función para procesar con JavaScript (mantiene la funcionalidad original)
+        // Función para procesar la factura
         function procesarFactura() {
             const codigoGeneracion = generarCodigoUnico();
             const numeroControl = generarNumeroControl();
@@ -484,66 +529,6 @@
             };
 
             fetch('https://localhost:7122/api/procesar-dte', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(requestUnificado)
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`Error al procesar DTE: ${response.statusText}`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                const selloRecepcion = data.selloRecibido || null;
-                if (selloRecepcion) {
-                    alert('Factura procesada correctamente. Sello de recepción: ' + selloRecepcion);
-                    window.location.reload();
-                } else {
-                    alert('Factura procesada pero no se recibió sello de recepción');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Error al procesar la factura: ' + error.message);
-            });
-        }
-
-        // Nueva función para procesar con Java
-        function procesarFacturaJava() {
-            const codigoGeneracion = generarCodigoUnico();
-            const numeroControl = generarNumeroControl();
-            const dteJson = construirDteJson(codigoGeneracion, numeroControl);
-            
-            // Construir el request unificado combinando el DteJson con las propiedades adicionales
-            const requestUnificado = {
-                // Propiedades del DteJson
-                identificacion: dteJson.identificacion,
-                documentoRelacionado: dteJson.documentoRelacionado,
-                emisor: dteJson.emisor,
-                receptor: dteJson.receptor,
-                ventaTercero: dteJson.ventaTercero,
-                cuerpoDocumento: dteJson.cuerpoDocumento,
-                resumen: dteJson.resumen,
-                extension: dteJson.extension,
-                otrosDocumentos: dteJson.otrosDocumentos,
-                apendice: dteJson.apendice,
-
-                // Propiedades adicionales del request
-                Usuario: configEmisor.nit,
-                Password: configEmisor.claveApi,
-                Ambiente: "00",
-                Nit: configEmisor.nit,
-                PasswordPrivado: configEmisor.clave,
-                TipoDte: "01",
-                CodigoGeneracion: codigoGeneracion,
-                NumControl: numeroControl,
-                VersionDte: 1
-            };
-
-            fetch('/factura/procesar-java', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
